@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>課堂時間管理</title>
+<style>
+:root{
+  --bg:#0f1419; --bg-2:#1a2129; --ink:#f5f3ea; --dim:#8fa0ad; --amber:#ffc857; --red:#ff5252; --green:#5ad19a; --tomato:#ff6b4a; --line:rgba(245,243,234,.18);
+  --font:"Noto Sans TC","PingFang TC","Microsoft JhengHei","Heiti TC",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);transition:background .6s;min-height:100vh;display:flex;flex-direction:column}
+body.alert{background:#2a0d0f}
+body.fs.idle{cursor:none}
+[hidden]{display:none!important}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.panel{flex:1;display:flex;flex-direction:column}
+
+/* 分頁與工具列 */
+.tabs{display:flex;gap:6px;padding:12px 4vw 0;transition:opacity .4s;flex-wrap:wrap}
+.tab{background:none;border:0;border-bottom:4px solid transparent;color:var(--dim);font-size:clamp(17px,1.6vw,26px);padding:8px 18px;cursor:pointer;font-weight:700}
+.tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--amber)}
+.toolbar{position:fixed;top:14px;right:14px;z-index:30;display:flex;gap:10px;transition:opacity .4s}
+body.fs.idle .toolbar,body.fs.idle .tabs{opacity:0;pointer-events:none}
+.btn{background:var(--bg-2);border:2px solid var(--line);border-radius:10px;padding:8px 16px;font-size:16px;cursor:pointer}
+.btn:hover{border-color:var(--ink)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--amber);color:#201800;padding:10px 18px;border-radius:10px;font-weight:700;z-index:40;display:none}
+.bar{height:.9vh;min-height:6px;background:var(--line);border-radius:99px;margin:1.4vh auto 0;max-width:70vw;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--amber);transition:width .5s linear}
+
+/* 考試大鐘 */
+.stage{flex:1;display:flex;flex-direction:column;padding:2vh 4vw 3vh;gap:1.5vh}
+.subject{font-size:clamp(28px,5vw,88px);font-weight:800;line-height:1.15;max-width:78vw}
+.subject.empty{color:var(--dim);font-weight:500}
+.date{font-size:clamp(18px,2.4vw,44px);color:var(--dim);margin-top:.4vh}
+.clock{flex:1;display:flex;align-items:center;justify-content:center;font-size:min(17vw,34vh);font-weight:800;letter-spacing:.02em;line-height:1;font-variant-numeric:tabular-nums}
+body.alert .clock,body.alert .remain b{color:var(--red)}
+body.alert .bar i{background:var(--red)}
+.status{text-align:center}
+.status .label{font-size:clamp(18px,2.6vw,48px);color:var(--dim)}
+.remain{font-size:clamp(28px,5.4vw,100px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1.15}
+.remain small{font-size:.45em;font-weight:500;color:var(--dim);margin-left:.4em}
+.remain.done{color:var(--amber)}
+.info{display:grid;grid-template-columns:1.2fr 1.4fr repeat(3,.7fr);gap:1.2vw;margin-top:1vh}
+.cell{border-top:3px solid var(--line);padding-top:.8vh;min-width:0}
+.cell .k{font-size:clamp(13px,1.3vw,24px);color:var(--dim)}
+.cell .v{font-size:clamp(20px,2.6vw,48px);font-weight:700;overflow-wrap:anywhere;line-height:1.25}
+.cell .v.num{font-size:clamp(28px,4vw,72px);font-variant-numeric:tabular-nums}
+.cell.absent .v{color:var(--amber)}
+.drawer{position:fixed;top:64px;right:14px;z-index:20;width:340px;max-width:calc(100vw - 28px);max-height:calc(100vh - 80px);overflow-y:auto;background:var(--bg-2);border:2px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.drawer h2{margin:0 0 12px;font-size:18px}
+.f{margin-bottom:12px}
+.f label{display:block;font-size:14px;color:var(--dim);margin-bottom:4px}
+input[type=text],input[type=time],input[type=number],select,.f input{width:100%;background:rgba(0,0,0,.3);border:2px solid var(--line);border-radius:8px;padding:8px 10px;font-size:17px}
+select option{color:#222}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.err{color:var(--red);font-size:14px;min-height:1.2em}
+
+/* 上下課鐘 */
+.bellwrap{flex:1;display:grid;grid-template-columns:1.1fr 1fr;gap:4vw;padding:3vh 4vw}
+.nowtime{font-size:clamp(48px,8vw,140px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1.05}
+.next{font-size:clamp(17px,1.8vw,30px);color:var(--dim);margin:6px 0 2.5vh;min-height:1.5em}
+.bigbtns{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.big{border:0;border-radius:20px;font-size:clamp(30px,4.2vw,76px);font-weight:800;padding:5vh 10px;cursor:pointer;color:#10150f;box-shadow:0 8px 0 rgba(0,0,0,.35)}
+.big:active{transform:translateY(5px);box-shadow:0 3px 0 rgba(0,0,0,.35)}
+.big.in{background:var(--amber)} .big.out{background:var(--green)}
+.ringing{margin-top:2vh;background:var(--amber);color:#201800;border-radius:12px;padding:10px 16px;font-weight:800;font-size:22px;display:flex;justify-content:space-between;align-items:center}
+.ringing button{background:#201800;color:var(--amber);border:0;border-radius:8px;padding:6px 16px;cursor:pointer;font-size:18px}
+.opts{margin-top:2.5vh;display:flex;flex-direction:column;gap:12px;font-size:18px}
+.opts label{display:flex;gap:10px;align-items:center}
+.opts input[type=checkbox]{width:20px;height:20px;accent-color:var(--amber)}
+.opts input[type=range]{accent-color:var(--amber);width:200px}
+.state{font-size:15px;color:var(--dim)} .state.bad{color:var(--red)}
+.sched h2{margin:0 0 10px;font-size:22px}
+.addrow{display:grid;grid-template-columns:120px 100px 1fr auto;gap:8px;margin-bottom:8px}
+.addrow .btn{background:var(--amber);color:#201800;border-color:var(--amber);font-weight:700}
+.list{list-style:none;margin:10px 0;padding:0;max-height:48vh;overflow-y:auto}
+.list li{display:flex;align-items:center;gap:12px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:19px}
+.list .t{font-weight:800;font-variant-numeric:tabular-nums;min-width:3.2em}
+.chip{font-size:14px;font-weight:700;border-radius:99px;padding:1px 10px;color:#10150f}
+.chip.in{background:var(--amber)} .chip.out{background:var(--green)}
+.list .l{flex:1;color:var(--dim);min-width:0;overflow-wrap:anywhere}
+.list .btn{padding:3px 10px;font-size:14px}
+.row2{display:flex;gap:10px;flex-wrap:wrap}
+
+/* 番茄鐘 */
+.pomo{--acc:var(--tomato);flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5vh;padding:2vh 4vw 4vh;text-align:center}
+.pomo.rest{--acc:var(--green)}
+.pomo .bar i{background:var(--acc)}
+.pomo .bar{width:60vw}
+.phase{font-size:clamp(28px,4vw,72px);font-weight:800;color:var(--acc)}
+.pstat{font-size:clamp(16px,1.8vw,30px);color:var(--dim)}
+.ptime{font-size:min(22vw,40vh);font-weight:800;line-height:1;font-variant-numeric:tabular-nums;color:var(--acc)}
+.pbtns{display:flex;gap:16px;margin-top:2vh;flex-wrap:wrap;justify-content:center}
+.pbtns .btn{font-size:clamp(20px,2.2vw,36px);padding:12px 34px;font-weight:700}
+.pbtns .main{background:var(--acc);color:#10150f;border-color:var(--acc);min-width:6em}
+.pset{display:flex;gap:22px;flex-wrap:wrap;justify-content:center;align-items:center;margin-top:2vh;font-size:18px;color:var(--dim)}
+.pset label{display:flex;gap:8px;align-items:center}
+.pset input[type=number]{width:76px;text-align:center}
+.pset input[type=checkbox]{width:20px;height:20px;accent-color:var(--acc)}
+.pdone{color:var(--ink);font-weight:700}
+
+@media (max-width:860px){.info{grid-template-columns:1fr 1fr}.subject{max-width:60vw}.bellwrap{grid-template-columns:1fr}.addrow{grid-template-columns:1fr 1fr}.addrow input[type=text]{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<nav class="tabs" role="tablist" aria-label="功能分頁">
+  <button class="tab" role="tab" data-tab="exam">考試大鐘</button>
+  <button class="tab" role="tab" data-tab="bell">上下課鐘</button>
+  <button class="tab" role="tab" data-tab="pomo">讀書番茄鐘</button>
+</nav>
+<div class="toolbar">
+  <button class="btn" id="bSet" aria-expanded="false">設定</button>
+  <button class="btn" id="bFs">全螢幕</button>
+</div>
+
+<!-- ===== 考試大鐘 ===== -->
+<section class="panel" id="p-exam">
+  <section class="drawer" id="drawer" hidden aria-label="考試設定">
+    <h2>考試設定</h2>
+    <div class="f"><label for="subject">考試科目</label><input id="subject" placeholder="例如：國文"></div>
+    <div class="two">
+      <div class="f"><label for="start">開始時間</label><input type="time" id="start"></div>
+      <div class="f"><label for="end">結束時間</label><input type="time" id="end"></div>
+    </div>
+    <div class="f"><label for="proctors">監考老師</label><input id="proctors" placeholder="例如：王老師、李老師"></div>
+    <div class="two">
+      <div class="f"><label for="expected">應到人數</label><input type="number" id="expected" min="0" inputmode="numeric"></div>
+      <div class="f"><label for="actual">實到人數</label><input type="number" id="actual" min="0" inputmode="numeric"></div>
+    </div>
+    <div class="err" id="err" role="alert"></div>
+  </section>
+  <main class="stage">
+    <div><div class="subject" id="vSubject"></div><div class="date" id="vDate"></div></div>
+    <div class="clock" id="vClock" aria-label="目前時間">00:00:00</div>
+    <div class="status">
+      <div class="label" id="vLabel"></div>
+      <div class="remain" id="vRemain"></div>
+      <div class="bar"><i id="vBar"></i></div>
+    </div>
+    <div class="info">
+      <div class="cell"><div class="k">考試時間</div><div class="v" id="vRange">—</div></div>
+      <div class="cell"><div class="k">監考老師</div><div class="v" id="vProc">—</div></div>
+      <div class="cell"><div class="k">應到</div><div class="v num" id="vExp">—</div></div>
+      <div class="cell"><div class="k">實到</div><div class="v num" id="vAct">—</div></div>
+      <div class="cell absent"><div class="k">缺考</div><div class="v num" id="vAbs">—</div></div>
+    </div>
+  </main>
+</section>
+
+<!-- ===== 上下課鐘 ===== -->
+<section class="panel" id="p-bell" hidden>
+  <div class="bellwrap">
+    <div>
+      <div class="nowtime" id="bNow">00:00:00</div>
+      <div class="next" id="bNext"></div>
+      <div class="bigbtns">
+        <button class="big in" id="bIn">上課鈴</button>
+        <button class="big out" id="bOut">下課鈴</button>
+      </div>
+      <div class="ringing" id="bRing" hidden><span id="bRingTxt"></span><button id="bStop">停止</button></div>
+      <div class="opts">
+        <label><input type="checkbox" id="bAuto"> 時間到自動響鈴</label>
+        <label>音量 <input type="range" id="bVol" min="0" max="1" step="0.05" aria-label="音量"></label>
+        <div class="state" id="bState"></div>
+      </div>
+    </div>
+    <div class="sched">
+      <h2>課表</h2>
+      <div class="addrow">
+        <input type="time" id="bTime" aria-label="鈴聲時間">
+        <select id="bKind" aria-label="鈴聲種類"><option value="in">上課</option><option value="out">下課</option></select>
+        <input type="text" id="bLabel" placeholder="備註（例如：第 1 節）" aria-label="備註">
+        <button class="btn" id="bAdd">新增</button>
+      </div>
+      <div class="err" id="bMsg" role="alert"></div>
+      <ul class="list" id="bList"></ul>
+      <div class="row2">
+        <button class="btn" id="bSample">載入範例課表</button>
+        <button class="btn" id="bClear">全部清除</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 讀書番茄鐘 ===== -->
+<section class="panel pomo" id="p-pomo" hidden>
+  <div class="phase" id="pPhase">專注</div>
+  <div class="pstat" id="pStat"></div>
+  <div class="ptime" id="pTime">25:00</div>
+  <div class="bar"><i id="pBar"></i></div>
+  <div class="pbtns">
+    <button class="btn main" id="pStart">開始</button>
+    <button class="btn" id="pReset">重設</button>
+    <button class="btn" id="pSkip">跳過</button>
+  </div>
+  <div class="pset">
+    <label>專注 <input type="number" id="pFocus" min="1" max="180"> 分鐘</label>
+    <label>休息 <input type="number" id="pRest" min="1" max="60"> 分鐘</label>
+    <label><input type="checkbox" id="pAuto"> 自動開始下一階段</label>
+    <span class="pdone" id="pDone"></span>
+  </div>
+</section>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const z = n => String(n).padStart(2,'0');
+  const ld = (k,d) => { try{ return Object.assign(d, JSON.parse(localStorage.getItem(k)||'null')||{}); }catch(e){ return d; } };
+  const sv = (k,v) => { try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} };
+  const fmt = s => s>=3600 ? Math.floor(s/3600)+':'+z(Math.floor(s%3600/60))+':'+z(s%60) : z(Math.floor(s/60))+':'+z(s%60);
+  const dayKey = d => d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();
+  const atTime = (base,hhmm) => {
+    if(!/^\d{1,2}:\d{2}$/.test(hhmm||'')) return null;
+    const [h,m] = hhmm.split(':').map(Number), d = new Date(base); d.setHours(h,m,0,0); return d;
+  };
+  function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3000); }
+
+  /* ================= 分頁 ================= */
+  const TABS = ['exam','bell','pomo'];
+  let tab = ld('time-tools-tab',{t:'exam'}).t;
+  if(!TABS.includes(tab)) tab='exam';
+  let examAlert = false;
+  function applyAlert(){ document.body.classList.toggle('alert', examAlert && tab==='exam'); }
+  function setTab(t){
+    tab = t; sv('time-tools-tab',{t});
+    TABS.forEach(n=>{ $('p-'+n).hidden = n!==t; });
+    document.querySelectorAll('.tab').forEach(b=>b.setAttribute('aria-selected', b.dataset.tab===t));
+    $('bSet').hidden = t!=='exam';
+    syncDrawer(); applyAlert();
+    if(t!=='pomo') document.title='課堂時間管理';
+  }
+  document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
+
+  /* ================= 考試大鐘 ================= */
+  const EK = 'exam-clock-v1', WEEK = ['日','一','二','三','四','五','六'];
+  const S = ld(EK,{subject:'',start:'',end:'',proctors:'',expected:'',actual:'',panel:true});
+  S.panel = S.panel && !(S.subject && S.start && S.end);
+  ['subject','start','end','proctors','expected','actual'].forEach(id=>{
+    $(id).value = S[id];
+    $(id).addEventListener('input', ()=>{ S[id]=$(id).value; sv(EK,S); renderExam(new Date()); });
+  });
+  function syncDrawer(){
+    const open = tab==='exam' && S.panel;
+    $('drawer').hidden = !open; $('bSet').setAttribute('aria-expanded', open);
+    $('bSet').textContent = S.panel ? '收起設定' : '設定';
+  }
+  $('bSet').onclick = () => { S.panel = !S.panel; sv(EK,S); syncDrawer(); };
+  const num = v => (v===''||v==null||isNaN(+v)||+v<0) ? null : Math.floor(+v);
+
+  function renderExam(now){
+    $('vClock').textContent = z(now.getHours())+':'+z(now.getMinutes())+':'+z(now.getSeconds());
+    $('vDate').textContent = now.getFullYear()+' 年 '+(now.getMonth()+1)+' 月 '+now.getDate()+' 日　星期'+WEEK[now.getDay()];
+    const sub = $('vSubject');
+    sub.textContent = S.subject.trim() || '請在「設定」輸入考試科目';
+    sub.classList.toggle('empty', !S.subject.trim());
+
+    const st = atTime(now,S.start); let en = atTime(now,S.end), alert = false;
+    const label=$('vLabel'), remain=$('vRemain'), bar=$('vBar');
+    remain.className = 'remain';
+    if(!st || !en){
+      label.textContent=''; remain.textContent='請設定考試開始與結束時間'; remain.style.fontSize='clamp(22px,3vw,56px)';
+      bar.style.width='0'; $('vRange').textContent='—';
+    } else {
+      remain.style.fontSize='';
+      if(en<=st) en = new Date(en.getTime()+86400000);
+      $('vRange').textContent = S.start+' – '+S.end+'（共 '+Math.round((en-st)/60000)+' 分鐘）';
+      const mm = ms => { const s=Math.max(0,Math.ceil(ms/1000)); return '<b>'+Math.floor(s/60)+'</b> 分鐘<small>'+z(s%60)+' 秒</small>'; };
+      if(now<st){ label.textContent='尚未開始，距離開始'; remain.innerHTML=mm(st-now); bar.style.width='0'; }
+      else if(now<en){
+        label.textContent='距離考試結束'; remain.innerHTML=mm(en-now);
+        bar.style.width=((now-st)/(en-st)*100).toFixed(2)+'%';
+        alert = (en-now)<=600000;           // 最後 10 分鐘
+      } else { label.textContent=''; remain.textContent='考試時間結束'; remain.classList.add('done'); bar.style.width='100%'; }
+    }
+    examAlert = alert; applyAlert();
+    $('vProc').textContent = S.proctors.trim() || '—';
+    const e=num(S.expected), a=num(S.actual); let err='';
+    $('vExp').textContent = e==null?'—':e; $('vAct').textContent = a==null?'—':a;
+    if(e!=null && a!=null){
+      if(a>e){ err='實到人數不能大於應到人數，請檢查。'; $('vAbs').textContent='—'; } else $('vAbs').textContent=e-a;
+    } else $('vAbs').textContent='—';
+    $('err').textContent = err;
+  }
+
+  /* ================= 音效（Web Audio） ================= */
+  const BK = 'class-bell-v1';
+  const B = ld(BK,{list:[],auto:true,vol:.8});
+  let actx=null, master=null, bus=null, ringT=null;
+  function AC(){
+    if(!actx){
+      const C = window.AudioContext||window.webkitAudioContext; if(!C) return null;
+      actx = new C(); master = actx.createGain(); master.gain.value = B.vol; master.connect(actx.destination);
+    }
+    if(actx.state==='suspended') actx.resume();
+    return actx;
+  }
+  ['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev, AC, {passive:true}));
+  // 鐘聲：基音加上幾個非整數倍泛音，高頻衰減較快
+  function strike(freq,t,dur,vol,dest){
+    [[1,1],[2.76,.5],[5.4,.22],[8.93,.1]].forEach(([r,g])=>{
+      const o=actx.createOscillator(), e=actx.createGain(), d=dur/(1+(r-1)*.4);
+      o.type='sine'; o.frequency.value=freq*r;
+      e.gain.setValueAtTime(vol*g,t); e.gain.exponentialRampToValueAtTime(.0001,t+d);
+      o.connect(e); e.connect(dest); o.start(t); o.stop(t+d+.05);
+    });
+  }
+  function stopRing(){
+    clearTimeout(ringT);
+    if(bus && actx){ const n=actx.currentTime; bus.gain.cancelScheduledValues(n); bus.gain.setValueAtTime(bus.gain.value,n); bus.gain.linearRampToValueAtTime(0,n+.08); }
+    bus=null; $('bRing').hidden=true;
+  }
+  function ring(kind){
+    if(!AC()){ toast('此瀏覽器不支援音效。'); return; }
+    stopRing();
+    const t0=actx.currentTime+.05; bus=actx.createGain(); bus.connect(master);
+    let dur;
+    if(kind==='in'){          // 上課鈴：高低兩音快速重複
+      for(let i=0;i<8;i++){ strike(932,t0+i*.75,.7,.22,bus); strike(698,t0+i*.75+.3,.7,.22,bus); }
+      dur=6.5;
+    } else {                  // 下課鈴：緩慢的四音旋律，重複兩次
+      [[659,0],[523,.9],[587,1.8],[392,2.7],[392,4.8],[587,5.7],[659,6.6],[523,7.5]].forEach(([f,d])=>strike(f,t0+d,1.8,.25,bus));
+      dur=10;
+    }
+    $('bRingTxt').textContent = (kind==='in'?'上課鈴':'下課鈴')+'播放中…'; $('bRing').hidden=false;
+    ringT=setTimeout(stopRing, dur*1000+300);
+  }
+  function chime(kind){      // 番茄鐘提示音
+    if(!AC()) return;
+    const t0=actx.currentTime+.05, b=actx.createGain(); b.connect(master);
+    (kind==='focus' ? [[784,0],[988,.3],[1175,.6]] : [[1175,0],[880,.35]]).forEach(([f,d])=>strike(f,t0+d,1.3,.25,b));
+  }
+
+  /* ================= 上下課鐘 ================= */
+  const fired = {};
+  const KIND = {in:'上課', out:'下課'};
+  function renderList(){
+    const ul=$('bList'); ul.innerHTML='';
+    if(!B.list.length){ const li=document.createElement('li'); li.style.color='var(--dim)'; li.textContent='尚無課表，請新增，或載入範例課表。'; ul.appendChild(li); return; }
+    B.list.slice().sort((a,b)=>a.time.localeCompare(b.time)||a.kind.localeCompare(b.kind)).forEach(e=>{
+      const li=document.createElement('li'), t=document.createElement('span'), c=document.createElement('span'), l=document.createElement('span'), d=document.createElement('button');
+      t.className='t'; t.textContent=e.time; c.className='chip '+e.kind; c.textContent=KIND[e.kind];
+      l.className='l'; l.textContent=e.label||''; d.className='btn'; d.textContent='刪除'; d.setAttribute('aria-label','刪除 '+e.time+' '+KIND[e.kind]);
+      d.onclick=()=>{ B.list=B.list.filter(x=>x.id!==e.id); sv(BK,B); renderList(); };
+      li.append(t,c,l,d); ul.appendChild(li);
+    });
+  }
+  function addEntry(time,kind,label,silent){
+    const now=new Date(), id=Date.now()+'-'+Math.random().toString(36).slice(2,6);
+    B.list.push({id,time,kind,label});
+    const tg=atTime(now,time); if(tg && tg<=now) fired[dayKey(now)+'|'+id]=1;   // 已過的時間今天不補響
+  }
+  $('bAdd').onclick = () => {
+    const time=$('bTime').value, kind=$('bKind').value, label=$('bLabel').value.trim();
+    if(!time){ $('bMsg').textContent='請先選擇鈴聲時間。'; return; }
+    if(B.list.some(e=>e.time===time && e.kind===kind)){ $('bMsg').textContent='這個時間已經有相同的鈴聲了。'; return; }
+    $('bMsg').textContent=''; addEntry(time,kind,label); sv(BK,B); renderList(); $('bLabel').value='';
+  };
+  $('bLabel').addEventListener('keydown',e=>{ if(e.key==='Enter') $('bAdd').click(); });
+  $('bSample').onclick = () => {
+    const rows=[['08:30','in','第 1 節'],['09:15','out',''],['09:25','in','第 2 節'],['10:10','out',''],['10:20','in','第 3 節'],['11:05','out',''],['11:15','in','第 4 節'],['12:00','out','午休'],['13:30','in','第 5 節'],['14:15','out','']];
+    rows.forEach(([t,k,l])=>{ if(!B.list.some(e=>e.time===t&&e.kind===k)) addEntry(t,k,l); });
+    sv(BK,B); renderList();
+  };
+  $('bClear').onclick = () => { if(!B.list.length || confirm('確定要清除所有課表嗎？')){ B.list=[]; sv(BK,B); renderList(); } };
+  $('bIn').onclick = () => ring('in');
+  $('bOut').onclick = () => ring('out');
+  $('bStop').onclick = stopRing;
+  $('bAuto').checked = B.auto; $('bVol').value = B.vol;
+  $('bAuto').onchange = () => { B.auto=$('bAuto').checked; sv(BK,B); AC(); };
+  $('bVol').oninput = () => { B.vol=+$('bVol').value; sv(BK,B); if(master) master.gain.value=B.vol; };
+
+  function tickBell(now){
+    $('bNow').textContent = z(now.getHours())+':'+z(now.getMinutes())+':'+z(now.getSeconds());
+    const day = dayKey(now); let nx=null;
+    B.list.forEach(e=>{
+      const tg=atTime(now,e.time); if(!tg) return;
+      const key=day+'|'+e.id;
+      if(B.auto && !fired[key] && tg<=now && now-tg<=90000){ fired[key]=1; ring(e.kind); }   // 90 秒內補響，避免分頁背景節流漏鈴
+      if(tg>now && (!nx || tg<nx.tg)) nx={tg,e};
+    });
+    $('bNext').textContent = nx
+      ? '下一個鈴聲　'+nx.e.time+' '+KIND[nx.e.kind]+(nx.e.label?'（'+nx.e.label+'）':'')+'　倒數 '+fmt(Math.ceil((nx.tg-now)/1000))+(B.auto?'':'（自動響鈴已關閉）')
+      : (B.list.length ? '今天已沒有後續鈴聲' : '尚未設定課表');
+    const ok = actx && actx.state==='running', s=$('bState');
+    s.textContent = ok ? '音效已啟用。請保持此頁開啟，到時間會自動響鈴。' : '請先點一下本頁任何地方（或按任一鈴聲按鈕），瀏覽器才允許自動響鈴。';
+    s.classList.toggle('bad', !ok && B.auto);
+  }
+
+  /* ================= 讀書番茄鐘 ================= */
+  const PK = 'pomodoro-v1';
+  const P = ld(PK,{focus:25,rest:5,auto:true,done:0,day:''});
+  if(P.day!==dayKey(new Date())){ P.day=dayKey(new Date()); P.done=0; }
+  let ph='focus', run=false, endAt=0;
+  const dur = p => (p==='focus'?P.focus:P.rest)*60000;
+  let rem = dur('focus');
+  $('pFocus').value=P.focus; $('pRest').value=P.rest; $('pAuto').checked=P.auto;
+
+  function pStart(){
+    AC();
+    if(run){ rem=Math.max(0,endAt-Date.now()); run=false; }
+    else { if(rem<=0) rem=dur(ph); endAt=Date.now()+rem; run=true; }
+    renderPomo();
+  }
+  function pReset(){ ph='focus'; run=false; rem=dur('focus'); renderPomo(); }
+  function pNext(natural){
+    if(natural && ph==='focus'){ P.done++; P.day=dayKey(new Date()); sv(PK,P); }
+    ph = ph==='focus' ? 'rest' : 'focus'; rem = dur(ph);
+  }
+  function pSkip(){ pNext(false); if(run) endAt=Date.now()+rem; renderPomo(); }
+  $('pStart').onclick=pStart; $('pReset').onclick=pReset; $('pSkip').onclick=pSkip;
+  $('pAuto').onchange=()=>{ P.auto=$('pAuto').checked; sv(PK,P); };
+  [['pFocus','focus'],['pRest','rest']].forEach(([id,p])=>$(id).addEventListener('input',()=>{
+    const v=parseInt($(id).value); if(!(v>=1)) return;
+    P[p]=Math.min(v,p==='focus'?180:60); sv(PK,P);
+    if(!run && ph===p) rem=dur(ph);
+    renderPomo();
+  }));
+  document.addEventListener('keydown',e=>{
+    if(tab==='pomo' && e.code==='Space' && !['INPUT','BUTTON','SELECT'].includes((document.activeElement||{}).tagName)){ e.preventDefault(); pStart(); }
+  });
+
+  function tickPomo(){
+    if(run){
+      const left=endAt-Date.now();
+      if(left<=0){
+        chime(ph); const keep=P.auto; pNext(true);
+        if(keep) endAt=Date.now()+rem; else run=false;
+      } else rem=left;
+    }
+    renderPomo();
+  }
+  function renderPomo(){
+    const secs=Math.ceil(rem/1000), full=dur(ph), started=rem<full;
+    $('p-pomo').classList.toggle('rest', ph==='rest');
+    $('pPhase').textContent = ph==='focus' ? '專注時間' : '休息時間';
+    $('pStat').textContent = run ? '進行中' : (started ? '已暫停' : '準備開始');
+    $('pTime').textContent = fmt(secs);
+    $('pBar').style.width = ((1-rem/full)*100).toFixed(2)+'%';
+    $('pStart').textContent = run ? '暫停' : (started ? '繼續' : '開始');
+    $('pDone').textContent = '今天已完成 '+P.done+' 個番茄';
+    if(tab==='pomo') document.title = run ? fmt(secs)+' '+(ph==='focus'?'專注':'休息')+'｜課堂時間管理' : '課堂時間管理';
+  }
+
+  /* ================= 全螢幕 ================= */
+  const root=document.documentElement, fsEl=()=>document.fullscreenElement||document.webkitFullscreenElement;
+  $('bFs').onclick = () => {
+    const req=root.requestFullscreen||root.webkitRequestFullscreen, ex=document.exitFullscreen||document.webkitExitFullscreen;
+    if(!req){ toast('此瀏覽器不支援全螢幕，請改用電腦版 Chrome 或 Edge。'); return; }
+    try{ if(fsEl()) ex.call(document); else { const p=req.call(root); if(p&&p.catch) p.catch(()=>toast('無法進入全螢幕。')); } }
+    catch(e){ toast('無法進入全螢幕。'); }
+  };
+  let idleT;
+  function wake(){ document.body.classList.remove('idle'); clearTimeout(idleT); if(fsEl()) idleT=setTimeout(()=>document.body.classList.add('idle'),3000); }
+  function fsChange(){ const on=!!fsEl(); document.body.classList.toggle('fs',on); $('bFs').textContent=on?'離開全螢幕':'全螢幕'; wake(); }
+  document.addEventListener('fullscreenchange',fsChange);
+  document.addEventListener('webkitfullscreenchange',fsChange);
+  ['mousemove','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,wake,{passive:true}));
+
+  /* ================= 啟動 ================= */
+  renderList(); setTab(tab);
+  const loop = () => { const now=new Date(); renderExam(now); tickBell(now); tickPomo(); };
+  loop(); setInterval(loop,250);
+})();
+</script>
+</body>
+</html>
